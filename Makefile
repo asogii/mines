@@ -2,7 +2,7 @@ SRCS =$(wildcard src/*.c)
 OBJS	= $(patsubst src/%.c, obj/%.o, $(SRCS))
 CC	 = cc
 FLAGS	 = -Wall -O2
-LFLAGS	 = -lncursesw
+LFLAGS	 = -lncursesw -lcadical -lstdc++ -lm
 BIN = bin/mines-tui
 
 all:$(BIN)

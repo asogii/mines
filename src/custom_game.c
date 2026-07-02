@@ -9,7 +9,7 @@ typedef struct custom_game_menu {
   char cursor_position;
 } CustomGameMenu;
 
-CustomGameMenu custom_game_menu = {40, 35, 600, 0};
+CustomGameMenu custom_game_menu = {40, 35, 300, 0};
 
 void cm_print(unsigned terminal_width, unsigned terminal_height) {
   int lml = (terminal_width - 21) / 2 + 1;

@@ -71,7 +71,7 @@ static void recalculate_numbers(char *mines, int width, int height) {
 }
 
 // 模拟求解：返回 true 表示逻辑通顺无猜，false 表示出现必须猜的死局
-static bool simulate_solve(char *mines, int width, int height, int sx, int sy, int *fx, int *fy) {
+static bool simulate_solve(CCaDiCaL * solver, char *mines, int width, int height, int sx, int sy, int *fx, int *fy) {
     int length = width * height;
     char *sim = calloc(length, sizeof(char));
 
@@ -142,9 +142,6 @@ static bool simulate_solve(char *mines, int width, int height, int sx, int sy, i
         // --- 阶段二：CaDiCaL 终极反证推导 ---
         // 只有当 Trivial 扫不动时才启动 SAT，极大地压榨了性能
         if (!progress) {
-            CCaDiCaL *solver = ccadical_init();
-            ccadical_declare_more_variables(solver, length);
-
             // 录入场上所有的客观线索
             for (int i = 0; i < length; i++) {
                 if (sim[i] != SIM_REVEALED) continue;
@@ -215,7 +212,6 @@ static bool simulate_solve(char *mines, int width, int height, int sx, int sy, i
                     }
                 }
             }
-            ccadical_release(solver);
         }
     }
 
@@ -242,6 +238,9 @@ static bool simulate_solve(char *mines, int width, int height, int sx, int sy, i
 GameInstance create_no_guess_game(int width, int height, int amount_mines, int sx, int sy) {
     GameInstance g = createGameInstanceNormal(width, height, 0);
     int length = width * height;
+
+    CCaDiCaL *solver = ccadical_init();
+    ccadical_declare_more_variables(solver, length);
 
 GLOBAL_RESTART:
 
@@ -272,7 +271,7 @@ GLOBAL_RESTART:
         recalculate_numbers(g->mines, width, height);
 
         int fx = -1, fy = -1;
-        if (simulate_solve(g->mines, width, height, sx, sy, &fx, &fy)) {
+        if (simulate_solve(solver, g->mines, width, height, sx, sy, &fx, &fy)) {
             goto SUCCESS;
         }
 
@@ -338,6 +337,8 @@ GLOBAL_RESTART:
     goto GLOBAL_RESTART;
 
 SUCCESS:
+    ccadical_release(solver);
+
     g->flagstotal = amount_mines;
     g->flagsfound = 0;
     g->unveiled = 0;

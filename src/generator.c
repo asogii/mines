@@ -15,36 +15,36 @@
 // SAT 的变量 ID 必须从 1 开始，不能为 0
 // ---------------------------------------------------------
 
-static void add_comb_at_least(CCaDiCaL *solver, int *vars, int n, int k_req, int start, int depth, int *comb) {
+static void add_comb_at_least(CCaDiCaL *solver, int *vars, int n, int k_req, int start, int depth, int *comb, int act_var) {
     if (depth == k_req) {
+        ccadical_add(solver, -act_var);
         for (int i = 0; i < depth; i++) ccadical_add(solver, comb[i]);
-        ccadical_add(solver, 0); // 0 结尾表示子句结束
+        ccadical_add(solver, 0);
         return;
     }
     for (int i = start; i <= n - (k_req - depth); i++) {
         comb[depth] = vars[i];
-        add_comb_at_least(solver, vars, n, k_req, i + 1, depth + 1, comb);
+        add_comb_at_least(solver, vars, n, k_req, i + 1, depth + 1, comb, act_var);
     }
 }
 
-static void add_comb_at_most(CCaDiCaL *solver, int *vars, int n, int k_req, int start, int depth, int *comb) {
+static void add_comb_at_most(CCaDiCaL *solver, int *vars, int n, int k_req, int start, int depth, int *comb, int act_var) {
     if (depth == k_req) {
-        // 取反表示“至少有一个是安全的”
+        ccadical_add(solver, -act_var); // NEW: 埋入激活变量的否定
         for (int i = 0; i < depth; i++) ccadical_add(solver, -comb[i]);
         ccadical_add(solver, 0);
         return;
     }
     for (int i = start; i <= n - (k_req - depth); i++) {
         comb[depth] = vars[i];
-        add_comb_at_most(solver, vars, n, k_req, i + 1, depth + 1, comb);
+        add_comb_at_most(solver, vars, n, k_req, i + 1, depth + 1, comb, act_var);
     }
 }
 
-// 核心转译：向求解器中录入“vars 数组里的 n 个未知格子中，恰好有 k 个雷”
-static void add_exactly_k(CCaDiCaL *solver, int *vars, int n, int k) {
-    int comb[10]; // 扫雷邻居最多 8 个，容量 10 绝对安全
-    if (k > 0) add_comb_at_least(solver, vars, n, n - k + 1, 0, 0, comb);
-    if (k < n) add_comb_at_most(solver, vars, n, k + 1, 0, 0, comb);
+static void add_exactly_k(CCaDiCaL *solver, int *vars, int n, int k, int act_var) {
+    int comb[10];
+    if (k > 0) add_comb_at_least(solver, vars, n, n - k + 1, 0, 0, comb, act_var);
+    if (k < n) add_comb_at_most(solver, vars, n, k + 1, 0, 0, comb, act_var);
 }
 
 
@@ -72,7 +72,7 @@ static void recalculate_numbers(char *mines, int width, int height) {
 }
 
 // 模拟求解：返回 true 表示逻辑通顺无猜，false 表示出现必须猜的死局
-static bool simulate_solve(CCaDiCaL * solver, char *mines, int width, int height, int sx, int sy, int *fx, int *fy) {
+static bool simulate_solve(CCaDiCaL * solver, char *mines, int width, int height, int sx, int sy, int *fx, int *fy, int act_var) {
     int length = width * height;
     char *sim = calloc(length, sizeof(char));
 
@@ -86,12 +86,8 @@ static bool simulate_solve(CCaDiCaL * solver, char *mines, int width, int height
         }
     }
 
-    int loop_count = 0;
     bool progress = true;
     while (progress) {
-        // if (++loop_count & 127) {
-        //     log_info("loop:%d", loop_count);
-        // }
         progress = false;
 
         // --- 阶段一：Trivial Solver (高速过滤) ---
@@ -175,7 +171,7 @@ static bool simulate_solve(CCaDiCaL * solver, char *mines, int width, int height
                     int k = true_num - flagged;
                     if (k < 0) k = 0;
                     if (k > n_hidden) k = n_hidden;
-                    add_exactly_k(solver, vars, n_hidden, k);
+                    add_exactly_k(solver, vars, n_hidden, k, act_var);
                 }
             }
 
@@ -200,6 +196,7 @@ static bool simulate_solve(CCaDiCaL * solver, char *mines, int width, int height
                         int var_id = i + 1;
 
                         // 测试 1：假设它是安全的，如果 UNSAT，那它必定是雷
+                        ccadical_assume(solver, act_var);
                         ccadical_assume(solver, -var_id);
                         if (ccadical_solve(solver) == 20) {
                             sim[i] = SIM_FLAGGED;
@@ -208,6 +205,7 @@ static bool simulate_solve(CCaDiCaL * solver, char *mines, int width, int height
                         }
 
                         // 测试 2：假设它是雷，如果 UNSAT，那它必定是安全的
+                        ccadical_assume(solver, act_var);
                         ccadical_assume(solver, var_id);
                         if (ccadical_solve(solver) == 20) {
                             sim[i] = SIM_REVEALED;
@@ -248,6 +246,8 @@ GameInstance create_no_guess_game(int width, int height, int amount_mines, int s
     ccadical_set_option(solver, "time", 0);
     ccadical_declare_more_variables(solver, length);
 
+    int global_epoch = 0;
+
 GLOBAL_RESTART:
 
     // 强制清空
@@ -276,8 +276,11 @@ GLOBAL_RESTART:
     while (retries < max_retries) {
         recalculate_numbers(g->mines, width, height);
 
+        int act_var = length + global_epoch + 1;
+        global_epoch++;
+
         int fx = -1, fy = -1;
-        if (simulate_solve(solver, g->mines, width, height, sx, sy, &fx, &fy)) {
+        if (simulate_solve(solver, g->mines, width, height, sx, sy, &fx, &fy, act_var)) {
             goto SUCCESS;
         }
 

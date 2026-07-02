@@ -17,6 +17,7 @@ typedef struct game {
   GameState state;
   time_t started;
   Cord cord;
+  Cord *unveil_queue;
 } *GameInstance;
 
 #endif

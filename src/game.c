@@ -41,33 +41,26 @@ GameInstance createGameInstance(int width, int height, int amount_mines) {
 GameInstance createGameInstanceNormal(int width, int height, int amount_mines) {
   GameInstance g = calloc(1, sizeof(struct game));
   int length = width * height;
-  int total = 0;
-  char *mines = malloc(length * sizeof(char));
-  double minesp = (double)amount_mines / (double)length;
-  srand48(time(0));
+  char *mines = calloc(length, sizeof(char));
+
+  int *indices = malloc(length * sizeof(int));
   for (int i = 0; i < length; i++) {
-    mines[i] = 0;
-    double rand = drand48();
-    if (rand < minesp) {
-      if (total == amount_mines)
-        continue;
-      mines[i] = MINE;
-      total += 1;
-    }
+    indices[i] = i;
   }
-  while (total < amount_mines) {
-    minesp = (double)(amount_mines - total) / (double)length;
-    for (int i = 0; i < length; i++) {
-      double rand = drand48();
-      if (rand < minesp && !is_mine(mines[i])) {
-        if (total == amount_mines)
-          continue;
-        mines[i] = MINE;
-        total += 1;
-      }
-    }
+
+  srand48(time(0));
+
+  for (int i = 0; i < amount_mines; i++) {
+    int j = i + (int)(drand48() * (length - i));
+
+    int temp = indices[i];
+    indices[i] = indices[j];
+    indices[j] = temp;
+
+    mines[indices[i]] = MINE;
   }
-  // compute amount of near mines
+  free(indices);
+
   for (int i = 0; i < height; i++) {
     for (int j = 0; j < width; j++) {
       if (!is_mine(mines[i * width + j])) {
@@ -90,22 +83,20 @@ GameInstance createGameInstanceNormal(int width, int height, int amount_mines) {
   g->mines = mines;
   g->width = width;
   g->height = height;
-  g->flagstotal = total;
+  g->flagstotal = amount_mines;
   g->flagsfound = 0;
   g->unveiled = 0;
   g->state = PLAYING;
-  Cord c;
-  c.x = 0;
-  c.y = 0;
-  g->cord = c;
-  time_t start;
-  time(&start);
-  g->started = start;
+  g->cord.x = 0;
+  g->cord.y = 0;
+  g->unveil_queue = malloc(length * sizeof(Cord));
+  time(&g->started);
   return g;
 }
 
 void deleteGameInstance(GameInstance g) {
   free(g->mines);
+  free(g->unveil_queue);
   free(g);
 }
 
@@ -262,23 +253,38 @@ void flag_cell(GameInstance g) {
 }
 
 void unveil_recursive(GameInstance game, Cord position) {
-  if (is_unveiled(game->mines[position.y * game->width + position.x]))
-    return;
-  game->mines[position.y * game->width + position.x] |= UNVLD;
-  game->unveiled++;
-  if (game->unveiled + game->flagstotal == game->width * game->height)
-    game->state = WON;
-  if (!is_blank(game->mines[position.y * game->width + position.x])) {
-    return;
-  }
-  for (int y = position.y - 1; y <= position.y + 1; y++) {
-    for (int x = position.x - 1; x <= position.x + 1; x++) {
-      if (x < 0 || y < 0 || x >= game->width || y >= game->height)
-        continue;
-      Cord cord;
-      cord.x = x;
-      cord.y = y;
-      unveil_recursive(game, cord);
+  int length = game->width * game->height;
+  Cord *queue = game->unveil_queue;
+
+  int head = 0, tail = 0;
+  queue[tail++] = position;
+
+  while (head < tail) {
+    Cord pos = queue[head++];
+    int idx = pos.y * game->width + pos.x;
+
+    if (is_unveiled(game->mines[idx])) continue;
+
+    game->mines[idx] |= UNVLD;
+    game->unveiled++;
+
+    if (game->unveiled + game->flagstotal == length) {
+      game->state = WON;
+    }
+
+    if (!is_blank(game->mines[idx])) continue;
+
+    for (int y = pos.y - 1; y <= pos.y + 1; y++) {
+      for (int x = pos.x - 1; x <= pos.x + 1; x++) {
+        if (x < 0 || y < 0 || x >= game->width || y >= game->height) continue;
+        if (x == pos.x && y == pos.y) continue;
+
+        int n_idx = y * game->width + x;
+        if (!is_unveiled(game->mines[n_idx])) {
+          Cord next_pos = {x, y};
+          queue[tail++] = next_pos;
+        }
+      }
     }
   }
 }

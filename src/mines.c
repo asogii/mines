@@ -109,7 +109,6 @@ start:
     exit(EXIT_FAILURE);
   while (1) {
     print_game(game, window);
-    validate_flags(game);
     if (cmove(game, &window) == -1)
       break;
     switch (game_state(game)) {

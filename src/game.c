@@ -17,6 +17,7 @@ typedef struct game {
   int length;
   int flagstotal;
   int flagsfound;
+  int faults;
   int unveiled;
   GameState state;
   time_t started;
@@ -251,15 +252,25 @@ int field_height(GameInstance g) { return g->height; }
 unsigned total_mines(GameInstance g) { return g->flagstotal; }
 
 void flag_cell(GameInstance g) {
-  if (is_flagged(g->mines[g->cord.y * g->width + g->cord.x])) {
-    g->mines[g->cord.y * g->width + g->cord.x] ^= FLAGGED;
+  int idx = g->cord.y * g->width + g->cord.x;
+  int s = g->mines[idx];
+  if (is_flagged(s)) {
+    g->mines[idx] ^= FLAGGED;
     g->flagsfound -= 1;
+    if (!is_mine(s)) {
+      g->faults -= 1;
+    }
   } else {
-    if (is_unveiled(g->mines[g->cord.y * g->width + g->cord.x]) ||
-        g->flagsfound == g->flagstotal)
+    if (is_unveiled(s) || g->flagsfound >= g->flagstotal)
       return;
-    g->mines[g->cord.y * g->width + g->cord.x] |= FLAGGED;
+    g->mines[idx] |= FLAGGED;
     g->flagsfound += 1;
+    if (!is_mine(s)) {
+      g->faults += 1;
+    }
+    if (g->flagsfound == g->flagstotal && g->faults == 0) {
+      g->state = WON;
+    }
   }
 }
 
@@ -285,9 +296,7 @@ void unveil_recursive(GameInstance game, Cord position) {
   }
 }
 
-void unveil_cell(GameInstance g) {
-  unveil_cell_at(g, g->cord);
-}
+void unveil_cell(GameInstance g) { unveil_cell_at(g, g->cord); }
 void unveil_cell_at(GameInstance g, Cord pos) {
   char cur_s = g->mines[pos.y * g->width + pos.x];
   if (is_flagged(cur_s)) {
@@ -338,15 +347,6 @@ void unveil_cell_at(GameInstance g, Cord pos) {
     return;
   }
   unveil_recursive(g, pos);
-}
-void validate_flags(GameInstance g) {
-  int fit = 0;
-  for (int i = 0; i < g->length; i++) {
-    if (is_mine(g->mines[i]) && is_flagged(g->mines[i]))
-      fit += 1;
-  }
-  if (fit == g->flagstotal)
-    g->state = WON;
 }
 
 Highscore generate_highscore(GameInstance g) {

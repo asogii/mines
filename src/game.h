@@ -46,6 +46,7 @@ GameView createView(GameInstance);
 GameView createViewGameover(GameInstance);
 void deleteView(GameView);
 GameInstance createGameInstance(int, int, int);
+GameInstance createGameInstanceNormal(int, int, int);
 Cord player_position(GameInstance);
 void set_player_position_x(GameInstance, int);
 void set_player_position_y(GameInstance, int);

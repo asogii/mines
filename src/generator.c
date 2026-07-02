@@ -10,8 +10,6 @@
 #define SIM_REVEALED 1
 #define SIM_FLAGGED 2
 
-static int _failed;
-
 static void recalculate_numbers(char *mines, int width, int height) {
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
@@ -100,19 +98,6 @@ static bool simulate_solve(char *mines, int width, int height, int sx, int sy, i
         }
 
         // FIXME not implemented: Pairwise Solver
-        if (!_failed) {
-            _failed = true;
-            FILE *log_file = fopen("/tmp/mines-tui.log", "a");
-            if (log_file) {
-                setbuf(log_file, NULL);
-                time_t now = time(NULL);
-                struct tm *tm_info = localtime(&now);
-                char timestamp[64];
-                strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
-                fprintf(log_file, "[%s] mines no guest failed\n", timestamp);
-                fflush(log_file);
-            }
-        }
     }
 
     bool solved = true;
@@ -132,9 +117,6 @@ static bool simulate_solve(char *mines, int width, int height, int sx, int sy, i
 }
 
 GameInstance create_no_guess_game(int width, int height, int amount_mines, int sx, int sy) {
-
-    _failed = 0;
-
     GameInstance g = createGameInstanceNormal(width, height, 0);
     int length = width * height;
 

@@ -4,10 +4,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <stdio.h>
 
 #define SIM_HIDDEN 0
 #define SIM_REVEALED 1
 #define SIM_FLAGGED 2
+
+static int _failed;
 
 static void recalculate_numbers(char *mines, int width, int height) {
     for (int y = 0; y < height; y++) {
@@ -96,7 +99,20 @@ static bool simulate_solve(char *mines, int width, int height, int sx, int sy, i
             }
         }
 
-        // 2. Pairwise Solver
+        // FIXME not implemented: Pairwise Solver
+        if (!_failed) {
+            _failed = true;
+            FILE *log_file = fopen("/tmp/mines-tui.log", "a");
+            if (log_file) {
+                setbuf(log_file, NULL);
+                time_t now = time(NULL);
+                struct tm *tm_info = localtime(&now);
+                char timestamp[64];
+                strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
+                fprintf(log_file, "[%s] mines no guest failed\n", timestamp);
+                fflush(log_file);
+            }
+        }
     }
 
     bool solved = true;
@@ -115,99 +131,10 @@ static bool simulate_solve(char *mines, int width, int height, int sx, int sy, i
     return solved;
 }
 
-void reassign_flat(
-    GameInstance g, int width, int height, int length,
-    int sx, int sy, int fx, int fy
-) {
-    int target_mine_idx = -1;
-    int target_safe_idx = -1;
-
-    int offset_m = rand() % length;
-    for(int i = 0; i < length; i++) {
-        int idx = (offset_m + i) % length;
-        if ((g->mines[idx] & MINE)) {
-            target_mine_idx = idx;
-            break;
-        }
-    }
-
-    int offset_s = rand() % length;
-    for(int i = 0; i <= length; i++) {
-        int idx = (offset_s + i) % length;
-        int cx = idx % width;
-        int cy = idx / width;
-        if (!(g->mines[idx] & MINE) && (abs(cx - sx) > 1 || abs(cy - sy) > 1)) {
-            target_safe_idx = idx;
-            break;
-        }
-    }
-
-    if (target_mine_idx != -1 && target_safe_idx != -1) {
-        g->mines[target_mine_idx] &= ~MINE;
-        g->mines[target_safe_idx] |= MINE;
-    }
-}
-
-void reassign_local(
-    GameInstance g, int width, int height, int length,
-    int sx, int sy, int fx, int fy
-) {
-    int target_mine_idx = -1;
-    int target_safe_idx = -1;
-
-    int mines_list[25];
-    int safes_list[25];
-    int m_count = 0, s_count = 0;
-
-    for (int dy = -2; dy <= 2; dy++) {
-        for (int dx = -2; dx <= 2; dx++) {
-            int nx = fx + dx;
-            int ny = fy + dy;
-            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                if (abs(nx - sx) <= 1 && abs(ny - sy) <= 1) continue;
-
-                int idx = ny * width + nx;
-                if (g->mines[idx] & MINE) {
-                    mines_list[m_count++] = idx;
-                } else {
-                    safes_list[s_count++] = idx;
-                }
-            }
-        }
-    }
-
-    if (m_count > 0 && s_count > 0) {
-        target_mine_idx = mines_list[rand() % m_count];
-        target_safe_idx = safes_list[rand() % s_count];
-    }
-    else {
-        int offset_m = rand() % length;
-        for (int i = 0; i < length; i++) {
-            int idx = (offset_m + i) % length;
-            if (g->mines[idx] & MINE) {
-                target_mine_idx = idx;
-                break;
-            }
-        }
-        int offset_s = rand() % length;
-        for (int i = 0; i < length; i++) {
-            int idx = (offset_s + i) % length;
-            int cx = idx % width;
-            int cy = idx / width;
-            if (!(g->mines[idx] & MINE) && (abs(cx - sx) > 1 || abs(cy - sy) > 1)) {
-                target_safe_idx = idx;
-                break;
-            }
-        }
-    }
-
-    if (target_mine_idx != -1 && target_safe_idx != -1) {
-        g->mines[target_mine_idx] &= ~MINE;
-        g->mines[target_safe_idx] |= MINE;
-    }
-}
-
 GameInstance create_no_guess_game(int width, int height, int amount_mines, int sx, int sy) {
+
+    _failed = 0;
+
     GameInstance g = createGameInstanceNormal(width, height, 0);
     int length = width * height;
 
@@ -239,8 +166,59 @@ GameInstance create_no_guess_game(int width, int height, int amount_mines, int s
             break;
         }
 
-        // reassign_flat(g, width, height, length, sx, sy, fx, fy);
-        reassign_local(g, width, height, length, sx, sy, fx, fy);
+        int target_mine_idx = -1;
+        int target_safe_idx = -1;
+
+        int mines_list[25];
+        int safes_list[25];
+        int m_count = 0, s_count = 0;
+
+        for (int dy = -2; dy <= 2; dy++) {
+            for (int dx = -2; dx <= 2; dx++) {
+                int nx = fx + dx;
+                int ny = fy + dy;
+                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                    if (abs(nx - sx) <= 1 && abs(ny - sy) <= 1) continue;
+
+                    int idx = ny * width + nx;
+                    if (g->mines[idx] & MINE) {
+                        mines_list[m_count++] = idx;
+                    } else {
+                        safes_list[s_count++] = idx;
+                    }
+                }
+            }
+        }
+
+        if (m_count > 0 && s_count > 0) {
+            target_mine_idx = mines_list[rand() % m_count];
+            target_safe_idx = safes_list[rand() % s_count];
+        }
+        else {
+            int offset_m = rand() % length;
+            for (int i = 0; i < length; i++) {
+                int idx = (offset_m + i) % length;
+                if (g->mines[idx] & MINE) {
+                    target_mine_idx = idx;
+                    break;
+                }
+            }
+            int offset_s = rand() % length;
+            for (int i = 0; i < length; i++) {
+                int idx = (offset_s + i) % length;
+                int cx = idx % width;
+                int cy = idx / width;
+                if (!(g->mines[idx] & MINE) && (abs(cx - sx) > 1 || abs(cy - sy) > 1)) {
+                    target_safe_idx = idx;
+                    break;
+                }
+            }
+        }
+
+        if (target_mine_idx != -1 && target_safe_idx != -1) {
+            g->mines[target_mine_idx] &= ~MINE;
+            g->mines[target_safe_idx] |= MINE;
+        }
 
         retries++;
     }

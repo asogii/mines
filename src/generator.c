@@ -1,5 +1,6 @@
 #include "generator.h"
 #include "game_state.h"
+#include "log.h"
 #include <ccadical.h>
 #include <stdlib.h>
 #include <string.h>
@@ -85,8 +86,12 @@ static bool simulate_solve(CCaDiCaL * solver, char *mines, int width, int height
         }
     }
 
+    int loop_count = 0;
     bool progress = true;
     while (progress) {
+        // if (++loop_count & 127) {
+        //     log_info("loop:%d", loop_count);
+        // }
         progress = false;
 
         // --- 阶段一：Trivial Solver (高速过滤) ---
@@ -240,6 +245,7 @@ GameInstance create_no_guess_game(int width, int height, int amount_mines, int s
     int length = width * height;
 
     CCaDiCaL *solver = ccadical_init();
+    ccadical_set_option(solver, "time", 0);
     ccadical_declare_more_variables(solver, length);
 
 GLOBAL_RESTART:

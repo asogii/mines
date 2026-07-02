@@ -5,6 +5,7 @@
 #include "helper.h"
 #include "highscore.h"
 #include "menu.h"
+#include "log.h"
 #include <limits.h>
 #include <locale.h>
 #include <ncurses.h>
@@ -93,6 +94,7 @@ void print_game(GameInstance game, WINDOW *window) {
 }
 
 int main(void) {
+  log_init(NULL);
   FILE *local_highscores = init_state_files();
   fclose(local_highscores);
   time(&fps_timestamp);
@@ -137,5 +139,7 @@ new_game:
     goto start;
 end:
   endwin();
+
+  log_close();
   return 0;
 }

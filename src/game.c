@@ -286,23 +286,58 @@ void unveil_recursive(GameInstance game, Cord position) {
 }
 
 void unveil_cell(GameInstance g) {
-  if (is_flagged(g->mines[g->cord.y * g->width + g->cord.x])) {
+  unveil_cell_at(g, g->cord);
+}
+void unveil_cell_at(GameInstance g, Cord pos) {
+  char cur_s = g->mines[pos.y * g->width + pos.x];
+  if (is_flagged(cur_s)) {
     return;
   }
-  if (is_mine(g->mines[g->cord.y * g->width + g->cord.x])) {
+  if (is_mine(cur_s)) {
     g->state = LOST;
     return;
   }
-  if (g->mines[g->cord.y * g->width + g->cord.x] > 0) {
-    if (!is_unveiled(g->mines[g->cord.y * g->width + g->cord.x])) {
-      g->mines[g->cord.y * g->width + g->cord.x] |= UNVLD;
+  if (cur_s > 0) {
+    if (!is_unveiled(cur_s)) {
+      g->mines[pos.y * g->width + pos.x] |= UNVLD;
       g->unveiled++;
+    } else {
+      char flags_around = 0;
+      for (int y = pos.y - 1; y <= pos.y + 1; y++) {
+        for (int x = pos.x - 1; x <= pos.x + 1; x++) {
+          if (x < 0 || y < 0 || x >= g->width || y >= g->height)
+            continue;
+          if (x == pos.x && y == pos.y) {
+            continue;
+          }
+          if (is_flagged(g->mines[y * g->width + x])) {
+            flags_around++;
+          }
+        }
+      }
+      if ((cur_s & 0b1111) == flags_around) {
+        for (int y = pos.y - 1; y <= pos.y + 1; y++) {
+          for (int x = pos.x - 1; x <= pos.x + 1; x++) {
+            if (x < 0 || y < 0 || x >= g->width || y >= g->height)
+              continue;
+            if (x == pos.x && y == pos.y) {
+              continue;
+            }
+            if (!is_unveiled(g->mines[y * g->width + x])) {
+              Cord cord;
+              cord.x = x;
+              cord.y = y;
+              unveil_cell_at(g, cord);
+            }
+          }
+        }
+      }
     }
     if (g->unveiled + g->flagstotal == g->width * g->height)
       g->state = WON;
     return;
   }
-  unveil_recursive(g, g->cord);
+  unveil_recursive(g, pos);
 }
 void validate_flags(GameInstance g) {
   int fit = 0;

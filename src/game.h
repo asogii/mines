@@ -53,6 +53,7 @@ int field_width(GameInstance);
 int field_height(GameInstance);
 void flag_cell(GameInstance);
 void unveil_cell(GameInstance);
+void unveil_cell_at(GameInstance, Cord);
 void validate_flags(GameInstance);
 void deleteGameInstance(GameInstance);
 unsigned total_mines(GameInstance);

@@ -9,7 +9,7 @@ typedef struct custom_game_menu {
   char cursor_position;
 } CustomGameMenu;
 
-CustomGameMenu custom_game_menu = {40, 10, 40, 0};
+CustomGameMenu custom_game_menu = {40, 35, 300, 0};
 
 void cm_print(unsigned terminal_width, unsigned terminal_height) {
   int lml = (terminal_width - 21) / 2 + 1;
@@ -116,6 +116,9 @@ GameInstance get_custom_game(WINDOW **window) {
     if (ret == 1)
       return select_mode(window);
   }
-  return createGameInstance(custom_game_menu.width, custom_game_menu.height,
-                            custom_game_menu.mines);
+  return new_game(
+    custom_game_menu.width,
+    custom_game_menu.height,
+    custom_game_menu.mines
+  );
 }

@@ -1,172 +1,122 @@
 #include "game.h"
+#include "game_state.h"
+#include "generator.h"
 #include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <time.h>
 #include <unistd.h>
 
-#define MINE 0b0010000
-#define UNVLD 0b0100000
-#define FLAGGED 0b1000000
-
-typedef struct game {
-  char *mines;
-  int width;
-  int height;
-  int length;
-  int flagstotal;
-  int flagsfound;
-  int unveiled;
-  GameState state;
-  time_t started;
-  Cord cord;
-} *GameInstance;
-
-char is_mine(char c) {
-  char m = MINE;
-  if (c & m)
-    return 1;
-  return 0;
+static inline bool is_mine(unsigned char c) {
+    return (c & MINE) != 0;
 }
-
-char is_flagged(char c) {
-  char f = FLAGGED;
-  if (c & f)
-    return 1;
-  return 0;
+static inline bool is_flagged(unsigned char c) {
+    return (c & FLAGGED) != 0;
 }
-
-char is_blank(char c) {
-  if (c & 0b1111)
-    return 0;
-  return 1;
+static inline bool is_blank(unsigned char c) {
+    return (c & 0x0F) == 0;
 }
-
-char is_unveiled(char c) {
-  char u = UNVLD;
-  if (c & u)
-    return 1;
-  return 0;
+static inline bool is_unveiled(unsigned char c) {
+    return (c & UNVLD) != 0;
 }
 
 GameInstance createGameInstance(int width, int height, int amount_mines) {
   GameInstance g = calloc(1, sizeof(struct game));
-  int length = width * height;
-  int total = 0;
-  char *mines = malloc(length * sizeof(char));
-  double minesp = (double)amount_mines / (double)length;
+  int size = width * height;
+  char *cells = calloc(size, sizeof(char));
+  g->size = size;
+  g->cells = cells;
+  g->width = width;
+  g->height = height;
+  g->mines = amount_mines;
+  g->state = PLAYING;
+  g->unveil_queue = malloc(size * sizeof(Cord));
+  time(&g->started);
+  return g;
+}
+GameInstance new_game(int width, int height, int amount_mines) {
+  return new_game_no_guess(width, height, amount_mines, 0, 0);
+}
+GameInstance new_game_pure_random(int width, int height, int amount_mines) {
+  GameInstance g = createGameInstance(width, height, amount_mines);
+  int *indices = malloc(g->size * sizeof(int));
+  for (int i = 0; i < g->size; i++) {
+    indices[i] = i;
+  }
   srand48(time(0));
-  for (int i = 0; i < length; i++) {
-    mines[i] = 0;
-    double rand = drand48();
-    if (rand < minesp) {
-      if (total == amount_mines)
-        continue;
-      mines[i] = MINE;
-      total += 1;
-    }
+  for (int i = 0; i < amount_mines; i++) {
+    int j = i + (int)(drand48() * (g->size - i));
+    int temp = indices[i];
+    indices[i] = indices[j];
+    indices[j] = temp;
+    g->cells[indices[i]] = MINE;
   }
-  while (total < amount_mines) {
-    minesp = (double)(amount_mines - total) / (double)length;
-    for (int i = 0; i < length; i++) {
-      double rand = drand48();
-      if (rand < minesp && !is_mine(mines[i])) {
-        if (total == amount_mines)
-          continue;
-        mines[i] = MINE;
-        total += 1;
-      }
-    }
-  }
-  // compute amount of near mines
+  free(indices);
   for (int i = 0; i < height; i++) {
     for (int j = 0; j < width; j++) {
-      if (!is_mine(mines[i * width + j])) {
+      if (!is_mine(g->cells[i * width + j])) {
         int mcount = 0;
         for (int k = i - 1; k <= i + 1; k++) {
           for (int l = j - 1; l <= j + 1; l++) {
             if (k >= 0 && k < height && l >= 0 && l < width) {
-              if (is_mine(mines[k * width + l])) {
+              if (is_mine(g->cells[k * width + l])) {
                 mcount++;
               }
             }
           }
         }
-        mines[i * width + j] = mcount;
+        g->cells[i * width + j] = mcount;
       }
     }
   }
-
-  g->length = length;
-  g->mines = mines;
-  g->width = width;
-  g->height = height;
-  g->flagstotal = total;
-  g->flagsfound = 0;
-  g->unveiled = 0;
-  g->state = PLAYING;
-  Cord c;
-  c.x = 0;
-  c.y = 0;
-  g->cord = c;
-  time_t start;
-  time(&start);
-  g->started = start;
   return g;
 }
 
 void deleteGameInstance(GameInstance g) {
-  free(g->mines);
+  free(g->cells);
+  free(g->unveil_queue);
   free(g);
 }
 
+static inline CellType get_cell_type(unsigned char cell) {
+  switch (cell & 0x0F) {
+  case 1:
+    return ONE;
+  case 2:
+    return TWO;
+  case 3:
+    return THREE;
+  case 4:
+    return FOUR;
+  case 5:
+    return FIVE;
+  case 6:
+    return SIX;
+  case 7:
+    return SEVEN;
+  case 8:
+    return EIGHT;
+  }
+  return UNVEILED;
+}
 GameView createView(GameInstance g) {
   GameView view = calloc(1, sizeof(struct game_view));
-  CellType *cells = calloc(g->length, sizeof(enum cell_type));
+  CellType *cells = calloc(g->size, sizeof(enum cell_type));
   view->cells = cells;
   view->player = g->cord;
   time_t current;
   time(&current);
-  view->mines = g->flagstotal - g->flagsfound;
+  view->mines = g->mines - g->flags;
   view->time = current - g->started;
   view->width = g->width;
   view->state = g->state;
-  for (int i = 0; i < g->length; i++) {
-    if (is_flagged(g->mines[i])) {
+  for (int i = 0; i < g->size; i++) {
+    if (is_flagged(g->cells[i])) {
       view->cells[i] = FLAG;
-    } else if (is_unveiled(g->mines[i])) {
-      switch (g->mines[i] & 0b1111) {
-      case 0:
-        view->cells[i] = UNVEILED;
-        break;
-      case 1:
-        view->cells[i] = ONE;
-        break;
-      case 2:
-        view->cells[i] = TWO;
-        break;
-      case 3:
-        view->cells[i] = THREE;
-        break;
-      case 4:
-        view->cells[i] = FOUR;
-        break;
-      case 5:
-        view->cells[i] = FIVE;
-        break;
-      case 6:
-        view->cells[i] = SIX;
-        break;
-      case 7:
-        view->cells[i] = SEVEN;
-        break;
-      case 8:
-        view->cells[i] = EIGHT;
-        break;
-      default:
-        break;
-      }
+    } else if (is_unveiled(g->cells[i])) {
+      view->cells[i] = get_cell_type(g->cells[i]);
     } else {
       view->cells[i] = UNTOUCHED;
     }
@@ -177,58 +127,28 @@ GameView createView(GameInstance g) {
 }
 GameView createViewGameover(GameInstance g) {
   GameView view = calloc(1, sizeof(struct game_view));
-  CellType *cells = calloc(g->length, sizeof(enum cell_type));
+  CellType *cells = calloc(g->size, sizeof(enum cell_type));
   view->cells = cells;
   view->player = g->cord;
   time_t current;
   time(&current);
-  view->mines = g->flagstotal - g->flagsfound;
+  view->mines = g->mines - g->flags;
   view->time = current - g->started;
   view->width = g->width;
   view->state = g->state;
-  for (int i = 0; i < g->length; i++) {
-    if (is_flagged(g->mines[i])) {
-      if (is_mine(g->mines[i])) {
+  for (int i = 0; i < g->size; i++) {
+    if (is_flagged(g->cells[i])) {
+      if (is_mine(g->cells[i])) {
         view->cells[i] = FLAG;
       } else {
         view->cells[i] = FALSE_FLAG;
       }
     } else {
-      if (is_mine(g->mines[i])) {
+      if (is_mine(g->cells[i])) {
         view->cells[i] = FLAG_NOT_FOUND;
         continue;
       }
-      switch (g->mines[i] & 0b1111) {
-      case 0:
-        view->cells[i] = UNVEILED;
-        break;
-      case 1:
-        view->cells[i] = ONE;
-        break;
-      case 2:
-        view->cells[i] = TWO;
-        break;
-      case 3:
-        view->cells[i] = THREE;
-        break;
-      case 4:
-        view->cells[i] = FOUR;
-        break;
-      case 5:
-        view->cells[i] = FIVE;
-        break;
-      case 6:
-        view->cells[i] = SIX;
-        break;
-      case 7:
-        view->cells[i] = SEVEN;
-        break;
-      case 8:
-        view->cells[i] = EIGHT;
-        break;
-      default:
-        break;
-      }
+      view->cells[i] = get_cell_type(g->cells[i]);
     }
   }
   view->cells[g->cord.y * g->width + g->cord.x] = FALSE_FLAG;
@@ -248,48 +168,108 @@ void set_player_position_x(GameInstance g, int x) { g->cord.x = x; }
 void set_player_position_y(GameInstance g, int y) { g->cord.y = y; }
 int field_width(GameInstance g) { return g->width; }
 int field_height(GameInstance g) { return g->height; }
-unsigned total_mines(GameInstance g) { return g->flagstotal; }
+unsigned total_mines(GameInstance g) { return g->mines; }
 
 void flag_cell(GameInstance g) {
-  if (is_flagged(g->mines[g->cord.y * g->width + g->cord.x])) {
-    g->mines[g->cord.y * g->width + g->cord.x] ^= FLAGGED;
-    g->flagsfound -= 1;
+  int idx = g->cord.y * g->width + g->cord.x;
+  int s = g->cells[idx];
+  if (is_flagged(s)) {
+    g->cells[idx] ^= FLAGGED;
+    g->flags -= 1;
+    if (!is_mine(s)) {
+      g->faults -= 1;
+    }
   } else {
-    if (is_unveiled(g->mines[g->cord.y * g->width + g->cord.x]) ||
-        g->flagsfound == g->flagstotal)
+    if (is_unveiled(s) || g->flags >= g->mines)
       return;
-    g->mines[g->cord.y * g->width + g->cord.x] |= FLAGGED;
-    g->flagsfound += 1;
-  }
-}
-
-void unveil_recursive(GameInstance game, Cord position) {
-  if (is_unveiled(game->mines[position.y * game->width + position.x]))
-    return;
-  game->mines[position.y * game->width + position.x] |= UNVLD;
-  game->unveiled++;
-  if (game->unveiled + game->flagstotal == game->width * game->height)
-    game->state = WON;
-  if (!is_blank(game->mines[position.y * game->width + position.x])) {
-    return;
-  }
-  for (int y = position.y - 1; y <= position.y + 1; y++) {
-    for (int x = position.x - 1; x <= position.x + 1; x++) {
-      if (x < 0 || y < 0 || x >= game->width || y >= game->height)
-        continue;
-      Cord cord;
-      cord.x = x;
-      cord.y = y;
-      unveil_recursive(game, cord);
+    g->cells[idx] |= FLAGGED;
+    g->flags += 1;
+    if (!is_mine(s)) {
+      g->faults += 1;
+    }
+    if (g->flags == g->mines && g->faults == 0) {
+      g->state = WON;
     }
   }
 }
 
-void unveil_cell(GameInstance g) {
-  unveil_cell_at(g, g->cord);
+void unveil_recursive(GameInstance g, Cord start_pos) {
+  Cord *queue = g->unveil_queue;
+
+  int head = 0, tail = 0;
+  int start_idx = start_pos.y * g->width + start_pos.x;
+
+  if (!is_unveiled(g->cells[start_idx])) {
+      g->cells[start_idx] |= UNVLD;
+      g->unveiled++;
+      queue[tail++] = start_pos;
+  }
+
+  while (head < tail) {
+    Cord pos = queue[head++];
+    int idx = pos.y * g->width + pos.x;
+
+    if (g->unveiled + g->mines == g->size) {
+      g->state = WON;
+    }
+
+    if (!is_blank(g->cells[idx])) continue;
+
+    for (int y = pos.y - 1; y <= pos.y + 1; y++) {
+      for (int x = pos.x - 1; x <= pos.x + 1; x++) {
+        if (x < 0 || y < 0 || x >= g->width || y >= g->height) continue;
+        if (x == pos.x && y == pos.y) continue;
+
+        int n_idx = y * g->width + x;
+
+        if (!is_unveiled(g->cells[n_idx])) {
+          g->cells[n_idx] |= UNVLD;
+          g->unveiled++;
+
+          Cord next_pos = {x, y};
+          queue[tail++] = next_pos;
+        }
+      }
+    }
+  }
 }
+void chord(GameInstance g, Cord pos) {
+  char cur_s = g->cells[pos.y * g->width + pos.x];
+  char flags_around = 0;
+  for (int y = pos.y - 1; y <= pos.y + 1; y++) {
+    for (int x = pos.x - 1; x <= pos.x + 1; x++) {
+      if (x < 0 || y < 0 || x >= g->width || y >= g->height)
+        continue;
+      if (x == pos.x && y == pos.y) {
+        continue;
+      }
+      if (is_flagged(g->cells[y * g->width + x])) {
+        flags_around++;
+      }
+    }
+  }
+  if ((cur_s & 0x0F) == flags_around) {
+    for (int y = pos.y - 1; y <= pos.y + 1; y++) {
+      for (int x = pos.x - 1; x <= pos.x + 1; x++) {
+        if (x < 0 || y < 0 || x >= g->width || y >= g->height)
+          continue;
+        if (x == pos.x && y == pos.y) {
+          continue;
+        }
+        if (!is_unveiled(g->cells[y * g->width + x])) {
+          Cord cord;
+          cord.x = x;
+          cord.y = y;
+          unveil_cell_at(g, cord);
+        }
+      }
+    }
+  }
+}
+
+void unveil_cell(GameInstance g) { unveil_cell_at(g, g->cord); }
 void unveil_cell_at(GameInstance g, Cord pos) {
-  char cur_s = g->mines[pos.y * g->width + pos.x];
+  char cur_s = g->cells[pos.y * g->width + pos.x];
   if (is_flagged(cur_s)) {
     return;
   }
@@ -297,56 +277,18 @@ void unveil_cell_at(GameInstance g, Cord pos) {
     g->state = LOST;
     return;
   }
+  if (is_unveiled(cur_s)) {
+    chord(g, pos);
+    return;
+  }
   if (cur_s > 0) {
-    if (!is_unveiled(cur_s)) {
-      g->mines[pos.y * g->width + pos.x] |= UNVLD;
-      g->unveiled++;
-    } else {
-      char flags_around = 0;
-      for (int y = pos.y - 1; y <= pos.y + 1; y++) {
-        for (int x = pos.x - 1; x <= pos.x + 1; x++) {
-          if (x < 0 || y < 0 || x >= g->width || y >= g->height)
-            continue;
-          if (x == pos.x && y == pos.y) {
-            continue;
-          }
-          if (is_flagged(g->mines[y * g->width + x])) {
-            flags_around++;
-          }
-        }
-      }
-      if ((cur_s & 0b1111) == flags_around) {
-        for (int y = pos.y - 1; y <= pos.y + 1; y++) {
-          for (int x = pos.x - 1; x <= pos.x + 1; x++) {
-            if (x < 0 || y < 0 || x >= g->width || y >= g->height)
-              continue;
-            if (x == pos.x && y == pos.y) {
-              continue;
-            }
-            if (!is_unveiled(g->mines[y * g->width + x])) {
-              Cord cord;
-              cord.x = x;
-              cord.y = y;
-              unveil_cell_at(g, cord);
-            }
-          }
-        }
-      }
-    }
-    if (g->unveiled + g->flagstotal == g->width * g->height)
+    g->cells[pos.y * g->width + pos.x] |= UNVLD;
+    g->unveiled++;
+    if (g->unveiled + g->mines == g->size)
       g->state = WON;
     return;
   }
   unveil_recursive(g, pos);
-}
-void validate_flags(GameInstance g) {
-  int fit = 0;
-  for (int i = 0; i < g->length; i++) {
-    if (is_mine(g->mines[i]) && is_flagged(g->mines[i]))
-      fit += 1;
-  }
-  if (fit == g->flagstotal)
-    g->state = WON;
 }
 
 Highscore generate_highscore(GameInstance g) {
@@ -357,7 +299,7 @@ Highscore generate_highscore(GameInstance g) {
   Highscore h;
   h.width = g->width;
   h.height = g->height;
-  h.mines = g->flagstotal;
+  h.mines = g->mines;
   h.time = current - g->started;
   h.date = current;
   return h;

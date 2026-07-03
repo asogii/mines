@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
+#include <stdatomic.h>
 
 #define SIM_HIDDEN 0
 #define SIM_REVEALED 1
@@ -242,7 +244,7 @@ static bool simulate_solve(CCaDiCaL * solver, char *mines, int width, int height
 // 主生成循环
 // ---------------------------------------------------------
 
-GameInstance create_no_guess_game(int width, int height, int amount_mines, int sx, int sy) {
+GameInstance create_no_guess_game(int width, int height, int amount_mines, int sx, int sy, atomic_bool *cancel_flag) {
     GameInstance g = createGameInstanceNormal(width, height, 0);
     int length = width * height;
     CCaDiCaL *solver;
@@ -253,6 +255,10 @@ GLOBAL_RESTART:
     ccadical_set_option(solver, "time", 0);
     ccadical_set_option(solver, "ilb", 2);
     ccadical_declare_more_variables(solver, length + MAX_RETRIES + 1);
+
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    srand(ts.tv_nsec ^ pthread_self());
 
     // 强制清空
     for (int i = 0; i < length; i++) g->mines[i] = 0;
@@ -277,6 +283,12 @@ GLOBAL_RESTART:
     int global_epoch = 0;
     int retries = 0;
     while (retries < MAX_RETRIES) {
+        if (cancel_flag && atomic_load(cancel_flag)) {
+            ccadical_release(solver);
+            deleteGameInstance(g);
+            return NULL;
+        }
+
         recalculate_numbers(g->mines, width, height);
 
         int act_var = length + global_epoch + 1;
@@ -360,4 +372,73 @@ SUCCESS:
     g->cord.x = sx;
     g->cord.y = sy;
     return g;
+}
+
+// 传递给线程的参数结构体
+typedef struct {
+    int width;
+    int height;
+    int amount_mines;
+    int sx;
+    int sy;
+    atomic_bool *cancel_flag;
+    GameInstance *winner;
+    pthread_mutex_t *mutex;
+} GenWorkerArgs;
+
+// 线程工作函数
+void* generator_worker(void *arg) {
+    GenWorkerArgs *args = (GenWorkerArgs*)arg;
+
+    GameInstance local_g = create_no_guess_game(
+        args->width, args->height, args->amount_mines,
+        args->sx, args->sy, args->cancel_flag
+    );
+
+    // 如果生成出来了，并且自己没有被取消
+    if (local_g != NULL) {
+        pthread_mutex_lock(args->mutex);
+        if (!atomic_load(args->cancel_flag)) {
+            // 我是第一个成功的！触发全员取消开关
+            atomic_store(args->cancel_flag, true);
+            *(args->winner) = local_g;
+        } else {
+            // 我晚了一步，别人已经交卷了，把我的心血销毁吧
+            deleteGameInstance(local_g); /*[cite: 1] */
+        }
+        pthread_mutex_unlock(args->mutex);
+    }
+    return NULL;
+}
+
+// 对外暴露的极速多线程生成接口
+GameInstance create_no_guess_game_mt(int width, int height, int amount_mines, int sx, int sy) {
+    int NUM_THREADS = 8; // 压榨算力
+
+    pthread_t threads[NUM_THREADS];
+    GenWorkerArgs thread_args[NUM_THREADS];
+
+    atomic_bool global_cancel = false;
+    GameInstance winning_game = NULL;
+    pthread_mutex_t write_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    for (int i = 0; i < NUM_THREADS; i++) {
+        thread_args[i].width = width;
+        thread_args[i].height = height;
+        thread_args[i].amount_mines = amount_mines;
+        thread_args[i].sx = sx;
+        thread_args[i].sy = sy;
+        thread_args[i].cancel_flag = &global_cancel;
+        thread_args[i].winner = &winning_game;
+        thread_args[i].mutex = &write_mutex;
+
+        pthread_create(&threads[i], NULL, generator_worker, &thread_args[i]);
+    }
+
+    // 主线程阻塞，等待所有打工线程结束
+    for (int i = 0; i < NUM_THREADS; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    return winning_game;
 }

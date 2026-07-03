@@ -36,7 +36,7 @@ char is_unveiled(char c) {
 }
 
 GameInstance createGameInstance(int width, int height, int amount_mines) {
-  return create_no_guess_game(width, height, amount_mines, 0, 0);
+  return create_no_guess_game_mt(width, height, amount_mines, 0, 0);
 }
 GameInstance createGameInstanceNormal(int width, int height, int amount_mines) {
   GameInstance g = calloc(1, sizeof(struct game));

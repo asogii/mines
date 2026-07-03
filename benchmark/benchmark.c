@@ -3,7 +3,7 @@
 #include <time.h>
 #include <math.h>
 // 依赖编译参数 -I../src 来定位头文件
-#include "game.h" 
+#include "game.h"
 #include "generator.h"
 
 // 纳秒级精度耗时计算
@@ -13,7 +13,7 @@ double get_time_diff(struct timespec start, struct timespec end) {
 
 void run_benchmark(int width, int height, int mines, int iterations) {
     struct timespec start, end;
-    
+
     int sx = width / 2;
     int sy = height / 2;
 
@@ -22,20 +22,20 @@ void run_benchmark(int width, int height, int mines, int iterations) {
         fprintf(stderr, "内存分配失败\n");
         exit(EXIT_FAILURE);
     }
-    
+
     double total_time = 0.0;
 
     for (int i = 0; i < iterations; i++) {
         clock_gettime(CLOCK_MONOTONIC, &start);
-        
-        GameInstance g = create_no_guess_game(width, height, mines, sx, sy);
-        
+
+        GameInstance g = create_no_guess_game_mt(width, height, mines, sx, sy);
+
         clock_gettime(CLOCK_MONOTONIC, &end);
-        
+
         double iter_time = get_time_diff(start, end);
         times[i] = iter_time;
         total_time += iter_time;
-        
+
         if (g) {
             deleteGameInstance(g); /*[cite: 1] */
         } else {
@@ -54,7 +54,7 @@ void run_benchmark(int width, int height, int mines, int iterations) {
 
     double std_dev = sqrt(variance);
 
-    printf("  %-2dx%-2d, %-3d雷 | 平均: %8.3f ms | 方差: %10.3f | 标准差: %8.3f ms\n", 
+    printf("  %-2dx%-2d, %-3d雷 | 平均: %8.3f ms | 方差: %10.3f | 标准差: %8.3f ms\n",
            width, height, mines, avg_time_ms, variance, std_dev);
 
     free(times);
@@ -65,10 +65,10 @@ int main() {
     printf("==========================================================================\n");
     printf(" [MAX_RETRIES: %-5d] 扫雷 0猜生成器基准测试 (Iterations: %d)\n", MAX_RETRIES, iterations);
     printf("==========================================================================\n");
-    
+
     run_benchmark(30, 16, 99, iterations);
     run_benchmark(40, 35, 300, iterations);
-    
+
     printf("\n");
     return 0;
 }

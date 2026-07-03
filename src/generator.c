@@ -10,6 +10,8 @@
 #define SIM_REVEALED 1
 #define SIM_FLAGGED 2
 
+#define MAX_RETRIES 5000
+
 // ---------------------------------------------------------
 // CNF 翻译层：组合数学生成器 (用于表达“N个格子中有K个雷”)
 // SAT 的变量 ID 必须从 1 开始，不能为 0
@@ -244,9 +246,10 @@ GameInstance create_no_guess_game(int width, int height, int amount_mines, int s
 
     CCaDiCaL *solver = ccadical_init();
     ccadical_set_option(solver, "time", 0);
-    ccadical_declare_more_variables(solver, length);
 
     int global_epoch = 0;
+    int current_var_capacity = length + MAX_RETRIES;
+    ccadical_declare_more_variables(solver, current_var_capacity);
 
 GLOBAL_RESTART:
 
@@ -270,14 +273,16 @@ GLOBAL_RESTART:
         }
     }
 
-    int max_retries = 5000;
     int retries = 0;
-
-    while (retries < max_retries) {
+    while (retries < MAX_RETRIES) {
         recalculate_numbers(g->mines, width, height);
 
         int act_var = length + global_epoch + 1;
         global_epoch++;
+        if (act_var > current_var_capacity) {
+            current_var_capacity += MAX_RETRIES;
+            ccadical_declare_more_variables(solver, current_var_capacity);
+        }
 
         int fx = -1, fy = -1;
         if (simulate_solve(solver, g->mines, width, height, sx, sy, &fx, &fy, act_var)) {

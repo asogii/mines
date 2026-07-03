@@ -251,8 +251,7 @@ GLOBAL_RESTART:
 
     solver = ccadical_init();
     ccadical_set_option(solver, "time", 0);
-
-    int global_epoch = 0;
+    ccadical_set_option(solver, "ilb", 2);
     ccadical_declare_more_variables(solver, length + MAX_RETRIES + 1);
 
     // 强制清空
@@ -275,13 +274,12 @@ GLOBAL_RESTART:
         }
     }
 
+    int global_epoch = 0;
     int retries = 0;
     while (retries < MAX_RETRIES) {
         recalculate_numbers(g->mines, width, height);
 
         int act_var = length + global_epoch + 1;
-        global_epoch++;
-
         int fx = -1, fy = -1;
         if (simulate_solve(solver, g->mines, width, height, sx, sy, &fx, &fy, act_var)) {
             goto SUCCESS;
@@ -342,6 +340,10 @@ GLOBAL_RESTART:
             g->mines[target_safe_idx] |= MINE;
         }
 
+        ccadical_add(solver, -act_var);
+        ccadical_add(solver, 0);
+
+        global_epoch++;
         retries++;
     }
 

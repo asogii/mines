@@ -10,7 +10,9 @@
 #define SIM_REVEALED 1
 #define SIM_FLAGGED 2
 
+#ifndef MAX_RETRIES
 #define MAX_RETRIES 1000
+#endif
 
 // ---------------------------------------------------------
 // CNF 翻译层：组合数学生成器 (用于表达“N个格子中有K个雷”)
@@ -243,15 +245,15 @@ static bool simulate_solve(CCaDiCaL * solver, char *mines, int width, int height
 GameInstance create_no_guess_game(int width, int height, int amount_mines, int sx, int sy) {
     GameInstance g = createGameInstanceNormal(width, height, 0);
     int length = width * height;
+    CCaDiCaL *solver;
 
-    CCaDiCaL *solver = ccadical_init();
+GLOBAL_RESTART:
+
+    solver = ccadical_init();
     ccadical_set_option(solver, "time", 0);
 
     int global_epoch = 0;
-    int current_var_capacity = length + MAX_RETRIES;
-    ccadical_declare_more_variables(solver, current_var_capacity);
-
-GLOBAL_RESTART:
+    ccadical_declare_more_variables(solver, length + MAX_RETRIES + 1);
 
     // 强制清空
     for (int i = 0; i < length; i++) g->mines[i] = 0;
@@ -279,10 +281,6 @@ GLOBAL_RESTART:
 
         int act_var = length + global_epoch + 1;
         global_epoch++;
-        if (act_var > current_var_capacity) {
-            current_var_capacity += MAX_RETRIES;
-            ccadical_declare_more_variables(solver, current_var_capacity);
-        }
 
         int fx = -1, fy = -1;
         if (simulate_solve(solver, g->mines, width, height, sx, sy, &fx, &fy, act_var)) {
@@ -348,17 +346,16 @@ GLOBAL_RESTART:
     }
 
     // 突破洗牌次数上限，放弃污染残局，执行纯随机重启
+    ccadical_release(solver);
     goto GLOBAL_RESTART;
 
 SUCCESS:
     ccadical_release(solver);
-
     g->flagstotal = amount_mines;
     g->flagsfound = 0;
     g->unveiled = 0;
     g->state = PLAYING;
     g->cord.x = sx;
     g->cord.y = sy;
-
     return g;
 }

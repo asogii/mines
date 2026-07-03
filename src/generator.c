@@ -10,7 +10,7 @@
 #define SIM_REVEALED 1
 #define SIM_FLAGGED 2
 
-#define MAX_RETRIES 5000
+#define MAX_RETRIES 1000
 
 // ---------------------------------------------------------
 // CNF 翻译层：组合数学生成器 (用于表达“N个格子中有K个雷”)

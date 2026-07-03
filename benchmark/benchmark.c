@@ -26,7 +26,7 @@ void run_benchmark(int width, int height, int mines, int iterations) {
     for (int i = 0; i < iterations; i++) {
         clock_gettime(CLOCK_MONOTONIC, &start);
 
-        GameInstance g = create_no_guess_game_mt(width, height, mines, sx, sy);
+        GameInstance g = new_game_no_guess(width, height, mines, sx, sy);
 
         clock_gettime(CLOCK_MONOTONIC, &end);
 

@@ -6,12 +6,12 @@
 #define FLAGGED 0b1000000
 
 typedef struct game {
-  char *mines;
+  char *cells;
   int width;
   int height;
-  int length;
-  int flagstotal;
-  int flagsfound;
+  int size;
+  int mines;
+  int flags;
   int faults;
   int unveiled;
   GameState state;

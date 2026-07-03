@@ -116,6 +116,9 @@ GameInstance get_custom_game(WINDOW **window) {
     if (ret == 1)
       return select_mode(window);
   }
-  return createGameInstance(custom_game_menu.width, custom_game_menu.height,
-                            custom_game_menu.mines);
+  return new_game(
+    custom_game_menu.width,
+    custom_game_menu.height,
+    custom_game_menu.mines
+  );
 }

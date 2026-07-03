@@ -95,11 +95,11 @@ GameInstance select_mode(WINDOW **window) {
       last_selected = menu.pos;
       switch (menu.pos) {
       case 0:
-        return createGameInstance(14, 7, 12);
+        return new_game(14, 7, 12);
       case 1:
-        return createGameInstance(20, 13, 41);
+        return new_game(20, 13, 41);
       case 2:
-        return createGameInstance(30, 16, 99);
+        return new_game(30, 16, 99);
       case 3:
         return get_custom_game(window);
       case 4:
@@ -114,8 +114,8 @@ GameInstance select_mode(WINDOW **window) {
       default:
         break;
       }
-      return createGameInstance(9, 9, 10);
+      return new_game(9, 9, 10);
     }
   }
-  return createGameInstance(9, 9, 10);
+  return new_game(9, 9, 10);
 }

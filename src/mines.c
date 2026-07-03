@@ -94,7 +94,7 @@ void print_game(GameInstance game, WINDOW *window) {
 }
 
 int main(void) {
-  log_init(NULL);
+  log_init();
   FILE *local_highscores = init_state_files();
   fclose(local_highscores);
   time(&fps_timestamp);
@@ -139,7 +139,6 @@ new_game:
     goto start;
 end:
   endwin();
-
   log_close();
   return 0;
 }

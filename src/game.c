@@ -257,16 +257,17 @@ void unveil_recursive(GameInstance game, Cord position) {
   Cord *queue = game->unveil_queue;
 
   int head = 0, tail = 0;
-  queue[tail++] = position;
+  int start_idx = position.y * game->width + position.x;
+
+  if (!is_unveiled(game->mines[start_idx])) {
+      game->mines[start_idx] |= UNVLD;
+      game->unveiled++;
+      queue[tail++] = position;
+  }
 
   while (head < tail) {
     Cord pos = queue[head++];
     int idx = pos.y * game->width + pos.x;
-
-    if (is_unveiled(game->mines[idx])) continue;
-
-    game->mines[idx] |= UNVLD;
-    game->unveiled++;
 
     if (game->unveiled + game->flagstotal == length) {
       game->state = WON;
@@ -280,7 +281,11 @@ void unveil_recursive(GameInstance game, Cord position) {
         if (x == pos.x && y == pos.y) continue;
 
         int n_idx = y * game->width + x;
+
         if (!is_unveiled(game->mines[n_idx])) {
+          game->mines[n_idx] |= UNVLD;
+          game->unveiled++;
+
           Cord next_pos = {x, y};
           queue[tail++] = next_pos;
         }

@@ -12,8 +12,8 @@
 #define SIM_REVEALED 1
 #define SIM_FLAGGED 2
 
-#ifndef MAX_RETRIES
-#define MAX_RETRIES 1000
+#ifndef GENERATOR_NUM_THREADS
+#define GENERATOR_NUM_THREADS 8
 #endif
 
 // ---------------------------------------------------------
@@ -247,6 +247,13 @@ static bool simulate_solve(CCaDiCaL * solver, char *mines, int width, int height
 GameInstance create_no_guess_game(int width, int height, int amount_mines, int sx, int sy, atomic_bool *cancel_flag) {
     GameInstance g = createGameInstanceNormal(width, height, 0);
     int length = width * height;
+
+#ifdef MAX_RETRIES
+    int max_retries = MAX_RETRIES;
+#else
+    int max_retries = (amount_mines * 100) / length;
+#endif
+
     CCaDiCaL *solver;
 
 GLOBAL_RESTART:
@@ -254,7 +261,7 @@ GLOBAL_RESTART:
     solver = ccadical_init();
     ccadical_set_option(solver, "time", 0);
     ccadical_set_option(solver, "ilb", 2);
-    ccadical_declare_more_variables(solver, length + MAX_RETRIES + 1);
+    ccadical_declare_more_variables(solver, length + max_retries + 1);
 
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -282,7 +289,7 @@ GLOBAL_RESTART:
 
     int global_epoch = 0;
     int retries = 0;
-    while (retries < MAX_RETRIES) {
+    while (retries < max_retries) {
         if (cancel_flag && atomic_load(cancel_flag)) {
             ccadical_release(solver);
             deleteGameInstance(g);
@@ -413,16 +420,14 @@ void* generator_worker(void *arg) {
 
 // 对外暴露的极速多线程生成接口
 GameInstance create_no_guess_game_mt(int width, int height, int amount_mines, int sx, int sy) {
-    int NUM_THREADS = 8; // 压榨算力
-
-    pthread_t threads[NUM_THREADS];
-    GenWorkerArgs thread_args[NUM_THREADS];
+    pthread_t threads[GENERATOR_NUM_THREADS];
+    GenWorkerArgs thread_args[GENERATOR_NUM_THREADS];
 
     atomic_bool global_cancel = false;
     GameInstance winning_game = NULL;
     pthread_mutex_t write_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-    for (int i = 0; i < NUM_THREADS; i++) {
+    for (int i = 0; i < GENERATOR_NUM_THREADS; i++) {
         thread_args[i].width = width;
         thread_args[i].height = height;
         thread_args[i].amount_mines = amount_mines;
@@ -436,7 +441,7 @@ GameInstance create_no_guess_game_mt(int width, int height, int amount_mines, in
     }
 
     // 主线程阻塞，等待所有打工线程结束
-    for (int i = 0; i < NUM_THREADS; i++) {
+    for (int i = 0; i < GENERATOR_NUM_THREADS; i++) {
         pthread_join(threads[i], NULL);
     }
 

@@ -33,8 +33,6 @@ void print_highscore(unsigned terminal_width, unsigned terminal_height,
   struct dimension text_max =
       buff_max_dimensions(printable_highscores, highscore_capacity);
 
-  timeout(-1);
-
   while (1) {
     erase();
     print_top_margin(terminal_height, highscore_window_height + 2);
@@ -70,20 +68,20 @@ void print_highscore(unsigned terminal_width, unsigned terminal_height,
 }
 
 void print_game(GameInstance game, WINDOW *window) {
+  if (print_highscore_flag) {
+    wtimeout(window, -1);
+    print_highscore(getmaxx(window), getmaxy(window), game);
+  }
   erase();
   print_top_margin(getmaxy(window), field_height(game) + 2);
   GameView view;
-  if (print_highscore_flag) {
-    print_highscore(getmaxx(window), getmaxy(window), game);
+  if (game_state(game) == LOST) {
+    view = createViewGameover(game);
   } else {
-    if (game_state(game) == LOST) {
-      view = createViewGameover(game);
-    } else {
-      view = createView(game);
-    }
-    print(view, getmaxx(window), field_width(game));
-    deleteView(view);
+    view = createView(game);
   }
+  print(view, getmaxx(window), field_width(game));
+  deleteView(view);
 }
 
 int main(void) {

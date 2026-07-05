@@ -9,37 +9,21 @@ WINDOW *create_window() {
   start_color();
   curs_set(0);
   noecho();
+  keypad(window, TRUE);
   return window;
 }
 
-char *generate_top_margin(unsigned int l) {
-  if (l > 1000)
-    l = 1;
-  char *ret = calloc(l + 1, sizeof(char));
-  for (int i = 0; i < l; i++) {
-    ret[i] = '\n';
-  }
-  return ret;
-}
-char *generate_left_margin(unsigned int l) {
-  if (l > 1000)
-    l = 1;
-  char *ret = calloc(l + 1, sizeof(char));
-  for (int i = 0; i < l; i++) {
-    ret[i] = ' ';
-  }
-  return ret;
-}
-
 void print_top_margin(unsigned int terminal_y, unsigned int game_y) {
-  char *tm = generate_top_margin(terminal_y / 2 - ((game_y + 5) / 2));
-  printw("%s", tm);
-  free(tm);
+  int l = terminal_y / 2 - ((game_y + 5) / 2);
+  for (int i = 0; i < l; i++) {
+    printw("\n");
+  }
 }
 void print_left_margin(unsigned int terminal_x, unsigned int game_x) {
-  char *lm = generate_left_margin(terminal_x / 2 - ((game_x + 2) / 2));
-  printw("%s", lm);
-  free(lm);
+  int l = terminal_x / 2 - ((game_x + 2) / 2);
+  if (l > 0) {
+    printw("%*s", l, "");
+  }
 }
 
 void print_scrollable(char **text, unsigned terminal_width,

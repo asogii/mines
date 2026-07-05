@@ -14,65 +14,58 @@
 #include <time.h>
 #include <unistd.h>
 
-time_t fps_timestamp;
-int fps_frame_counter = 0;
-int fps = 60;
-int sleep_time = 10000;
-
-void limit_fps() {
-  time_t current;
-  time(&current);
-  if (current > fps_timestamp) {
-    fps = fps_frame_counter;
-    fps_frame_counter = 0;
-    fps_timestamp = current;
-    if (fps < fps_limit)
-      sleep_time /= 2;
-    if (fps > fps_limit + 2)
-      sleep_time += 50 * (fps - fps_limit);
-  }
-  fps_frame_counter++;
-  usleep(sleep_time);
+static long to_wait() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (1000 - (ts.tv_nsec / 1000000)) % 1000;
 }
 
 void print_highscore(unsigned terminal_width, unsigned terminal_height,
                      GameInstance game) {
-  unsigned scroll_index = 0;
+    unsigned scroll_index = 0;
   struct highscore cmp;
   cmp.width = field_width(game);
   cmp.height = field_height(game);
   cmp.mines = total_mines(game);
+
   UserHighscore *highscores = load_highscores(cmp);
   char **printable_highscores = userHighscores2string(highscores);
   struct dimension text_max =
       buff_max_dimensions(printable_highscores, highscore_capacity);
+
+  timeout(-1);
+
   while (1) {
     erase();
     print_top_margin(terminal_height, highscore_window_height + 2);
     print_scrollable(printable_highscores + scroll_index, terminal_width,
                      text_max.width);
-    char ch = getch();
+
+    int ch = getch();
+
     switch (ch) {
     case 'j':
-    case 0x42:
+    case KEY_DOWN:
       if (scroll_index + highscore_window_height < text_max.len)
         scroll_index++;
       break;
-    case 0x41:
+
     case 'k':
-      scroll_index--;
-      if (scroll_index == UINT_MAX)
-        scroll_index = 0;
+    case KEY_UP:
+      if (scroll_index > 0)
+        scroll_index--;
       break;
-    case 0x44:
+
+    case 'h':
+    case KEY_LEFT:
       break;
+
     case 'q':
     case 'b':
       clear_char_buff(printable_highscores, highscore_capacity);
       print_highscore_flag ^= 1;
       return;
     }
-    limit_fps();
   }
 }
 
@@ -97,7 +90,6 @@ int main(void) {
   log_init();
   FILE *local_highscores = init_state_files();
   fclose(local_highscores);
-  time(&fps_timestamp);
   setlocale(LC_CTYPE, "");
   WINDOW *window = create_window();
   GameInstance game = select_mode(&window);
@@ -111,24 +103,21 @@ start:
     exit(EXIT_FAILURE);
   while (1) {
     print_game(game, window);
-    if (cmove(game, &window) == -1)
+    if (cmove(game, &window, to_wait()) == -1)
       break;
-    switch (game_state(game)) {
-    case PLAYING:
-      break;
-    case WON:
-      print_game(game, window);
+    GameState state = game_state(game);
+    if (state == PLAYING) {
+      continue;
+    }
+    if (state == WON) {
       Highscore highscore = generate_highscore(game);
       save_highscore(highscore, local_highscores);
-    case LOST:
-      print_game(game, window);
-      while (1) {
-        if (cmove(game, &window) == -1)
-          goto new_game;
-        limit_fps();
-      }
     }
-    limit_fps();
+    print_game(game, window);
+    while (1) {
+      if (cmove(game, &window, -1) == -1)
+        goto new_game;
+    }
   }
 new_game:
   deleteGameInstance(game);

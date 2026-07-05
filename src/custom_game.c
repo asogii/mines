@@ -1,6 +1,7 @@
 #include "custom_game.h"
 #include "menu.h"
 #include <stdlib.h>
+#include <ncurses.h>
 
 typedef struct custom_game_menu {
   unsigned width;
@@ -41,19 +42,19 @@ void cm_print(unsigned terminal_width, unsigned terminal_height) {
   free(lm);
 }
 char custom_game_control() {
-  char ch = getch();
+  int ch = getch();
   switch (ch) {
   case 'j':
-  case 0x42:
+  case KEY_DOWN:
     if (custom_game_menu.cursor_position + 1 < 3)
       custom_game_menu.cursor_position += 1;
     break;
   case 'k':
-  case 0x41:
+  case KEY_UP:
     if (custom_game_menu.cursor_position > 0)
       custom_game_menu.cursor_position -= 1;
     break;
-  case 0x43:
+  case KEY_RIGHT:
   case 'l':
     switch (custom_game_menu.cursor_position) {
     case 0:
@@ -69,7 +70,7 @@ char custom_game_control() {
       break;
     }
     break;
-  case 0x44:
+  case KEY_LEFT:
   case 'h':
     switch (custom_game_menu.cursor_position) {
     case 0:

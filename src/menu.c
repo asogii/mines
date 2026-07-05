@@ -52,15 +52,15 @@ void m_print(Menu *menu, unsigned int terminal_width,
 }
 
 char control(Menu *menu) {
-  char ch = getch();
+  int ch = getch();
   switch (ch) {
   case 'j':
-  case 0x42:
+  case KEY_DOWN:
     if (menu->pos + 1 < 5)
       menu->pos += 1;
     break;
   case 'k':
-  case 0x41:
+  case KEY_UP:
     if (menu->pos > 0)
       menu->pos -= 1;
     break;
